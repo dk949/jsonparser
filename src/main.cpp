@@ -13,16 +13,12 @@ using std::operator""s;
 
 #define DEV(X) [[maybe_unused]] X
 
-template<typename T>
-const std::pair<std::string, T> nothing = std::make_pair("Nothing", T());
-
 template<typename A, typename B>
-
 struct Query {
     static_assert(std::is_same_v<A, B>);
 };
 
-#define QUERY(A, B, C) [[maybe_unused]] Query<A, B> zzzzzzzzzzzzzzzzz##C
+#define QUERY(A, B, C) [[maybe_unused]] Query<A, B> z##C
 
 void printParsed(auto v) {
     if (v.has_value()) {
@@ -32,7 +28,6 @@ void printParsed(auto v) {
         std::cout << "Nothing\n";
     }
 }
-
 
 template<typename a>
 using ParserRetT = std::optional<std::pair<std::string, a>>;
@@ -64,7 +59,7 @@ Parser<JsonValue> jsonArray();
 
 auto fmap(auto f, auto p) {
     using Ret = typename decltype(std::function {f})::result_type;
-    return Parser<Ret> {[p, f](std::string input) -> ParserRetT<Ret> {
+    return Parser<Ret> {[p, f](ParserArgT input) -> ParserRetT<Ret> {
         if (auto par = p.runParser(input)) {
             auto [nextInput, x] = par.value();
             QUERY(Ret, decltype(f(x)), 1);
@@ -77,7 +72,7 @@ auto fmap(auto f, auto p) {
 
 template<typename a>
 Parser<a> pure(a x) {
-    return Parser<a> {[x](std::string input) -> ParserRetT<a> {  //
+    return Parser<a> {[x](ParserArgT input) -> ParserRetT<a> {  //
         return std::make_pair(input, x);
     }};
 }
@@ -109,7 +104,7 @@ std::pair<Collection, Collection> span(auto f, Collection l) {
 
 template<typename a>
 Parser<a> notNull(Parser<a> p) {
-    return Parser<a> {[p](std::string input) -> ParserRetT<a> {
+    return Parser<a> {[p](ParserArgT input) -> ParserRetT<a> {
         if (auto par = p.runParser(input)) {
             auto [nextInput, x] = par.value();
             if (x != "") {
@@ -126,10 +121,9 @@ auto id(auto a) {
 
 
 
-template<typename t>
-auto sequenceA(std::vector<Parser<t>> a) {
-    using Ret = std::conditional_t<std::is_same_v<t, char>, std::string, std::vector<t>>;
-    return Parser<Ret> {[a](std::string input) -> ParserRetT<Ret> {
+template<typename t, typename Ret = std::conditional_t<std::is_same_v<t, char>, std::string, std::vector<t>>>
+Parser<Ret> sequenceA(std::vector<Parser<t>> a) {
+    return Parser<Ret> {[a](ParserArgT input) -> ParserRetT<Ret> {
         Ret out;
         auto copyInput = input;
         for (auto p : a) {
@@ -147,7 +141,7 @@ auto sequenceA(std::vector<Parser<t>> a) {
 
 template<typename a, ParserFactory<a> f>
 auto operator|(Parser<a> p1, f p2) {  // alternative
-    return Parser<a> {[p1, p2](std::string input) -> ParserRetT<a> {
+    return Parser<a> {[p1, p2](ParserArgT input) -> ParserRetT<a> {
         if (auto par1 = p1.runParser(input)) {
             return par1;
         }
@@ -160,7 +154,7 @@ auto operator|(Parser<a> p1, f p2) {  // alternative
 
 template<typename a, typename b>
 auto operator>(Parser<a> p1, Parser<b> p2) {
-    return Parser<b> {[p1, p2](std::string input) -> ParserRetT<b> {
+    return Parser<b> {[p1, p2](ParserArgT input) -> ParserRetT<b> {
         if (auto par1 = p1.runParser(input)) {
             auto rest = par1.value().first;
             if (auto par2 = p2.runParser(rest)) {
@@ -173,7 +167,7 @@ auto operator>(Parser<a> p1, Parser<b> p2) {
 
 template<typename a, typename b>
 auto operator<(Parser<a> p1, Parser<b> p2) {
-    return Parser<a> {[p1, p2](std::string input) -> ParserRetT<a> {
+    return Parser<a> {[p1, p2](ParserArgT input) -> ParserRetT<a> {
         if (auto par1 = p1.runParser(input)) {
             auto [rest, ret] = par1.value();
             if (auto par2 = p2.runParser(rest)) {
@@ -187,7 +181,7 @@ auto operator<(Parser<a> p1, Parser<b> p2) {
 
 
 Parser<char> charP(char x) {
-    return Parser<char> {[x](std::string input) -> ParserRetT<char> {
+    return Parser<char> {[x](ParserArgT input) -> ParserRetT<char> {
         if (!input.empty()) {
             if (char y = input.front(); y == x) {
                 return std::make_pair(input.substr(1), y);
@@ -197,13 +191,13 @@ Parser<char> charP(char x) {
     }};
 }
 
-Parser<std::string> stringP(std::string x) {
+Parser<ParserArgT> stringP(ParserArgT x) {
     return sequenceA(map(charP, x));
 }
 
 
-Parser<std::string> spanP(auto f) {
-    return Parser<std::string> {[f](std::string input) -> ParserRetT<std::string> {
+Parser<ParserArgT> spanP(auto f) {
+    return Parser<ParserArgT> {[f](ParserArgT input) -> ParserRetT<ParserArgT> {
         auto ret = span(f, input);
 
         std::swap(ret.first, ret.second);
@@ -213,7 +207,7 @@ Parser<std::string> spanP(auto f) {
 
 template<typename a>
 Parser<std::vector<a>> many(Parser<a> p) {
-    return Parser<std::vector<a>> {[p](std::string input) {
+    return Parser<std::vector<a>> {[p](ParserArgT input) {
         std::vector<a> out;
         while (!input.empty()) {
             if (auto par = p.runParser(input)) {
@@ -229,11 +223,11 @@ Parser<std::vector<a>> many(Parser<a> p) {
 }
 
 
-Parser<std::string> stringLiteral() {
+Parser<ParserArgT> stringLiteral() {
     return charP('"') > spanP([](char c) { return c != '"'; }) < charP('"');
 }
 
-Parser<std::string> ws() {
+Parser<ParserArgT> ws() {
     return spanP([](char c) { return std::isspace(c); });
 }
 

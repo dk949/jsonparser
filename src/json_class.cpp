@@ -1,6 +1,6 @@
 #include "json_class.hpp"
 
-JsonValue::JsonValue(Data d):m_data(d){}
+JsonValue::JsonValue(Data d): m_data(d) {}
 
 JsonValue JsonNull() {
     return JsonValue(JsonValue::Data(JsonValue::Null {}));
@@ -60,18 +60,25 @@ void JsonValue::coutString(std::ostream &o, String arg) {
     o << "JsonString(" << arg << ')';
 }
 void JsonValue::coutArray(std::ostream &o, Array arg) {
+    static size_t arrayDepth = 0;
+    arrayDepth++;
     o << "JsonArray([";
     int i = 0;
     for (const auto &elem : arg) {
-        o << (i++ == 0 ? "" : ",") << elem;
+        o << (i++ == 0 ? "" : ",") << '\n' << std::string(arrayDepth, '\t') << elem;
     }
-    o << "])";
+    o << '\n' << std::string(arrayDepth, '\t') << "])";
+    arrayDepth--;
 }
 void JsonValue::coutObject(std::ostream &o, Object arg) {
+    static size_t objectDepth = 0;
+    objectDepth++;
     o << "JsonObject({";
     int i = 0;
     for (const auto &[key, value] : arg) {
-        o << (i++ == 0 ? "" : ",") << key << " : " << value;
+        o << (i++ == 0 ? "" : ",") << '\n' << std::string(objectDepth, '\t') << key << " : " << value;
     }
-    o << "})";
+
+    o << '\n' << std::string(objectDepth, '\t') << "])";
+    objectDepth--;
 }
