@@ -1,13 +1,15 @@
-#include "json_class.hpp"
+#include "json_class.hpp"  // for JsonValue, JsonValue::String, JsonValue::O...
 
-#include <cassert>
-#include <fmt/format.h>
-#include <functional>
-#include <iomanip>
-#include <numeric>
-#include <optional>
-#include <string>
-#include <utility>
+#include <algorithm>    // for transform
+#include <cctype>       // for isdigit, isspace
+#include <functional>   // for function
+#include <iostream>     // for operator<<, cout, ostream
+#include <iterator>     // for end, begin, back_inserter, pair
+#include <optional>     // for optional, nullopt
+#include <string>       // for basic_string, string, swap, allocator, ope...
+#include <type_traits>  // for conditional_t, declval
+#include <utility>      // for pair, make_pair, move
+#include <vector>       // for vector
 
 using std::operator""s;
 
@@ -120,7 +122,7 @@ Parser<Ret> sequenceA(const std::vector<Parser<t>> &a) {
     return Parser<Ret> {[a](const ParserArgT &input) -> ParserRetT<Ret> {
         Ret out;
         auto copyInput = input;
-        for (auto p : a) {
+        for (const auto &p : a) {
             if (auto success = p.runParser(copyInput)) {
                 auto [rest, res] = success.value();
                 out.push_back(res);
@@ -248,16 +250,16 @@ Parser<Ret> sepBy(Parser<a> sep, Parser<b> element) {
 
 
 Parser<JsonValue> jsonNull() {
-    return fmap([](std::string) { return JsonNull(); }, stringP("null"));
+    return fmap([]([[maybe_unused]] const std::string &_) { return JsonNull(); }, stringP("null"));
 }
 
 Parser<JsonValue> jsonBool() {
-    return fmap([](std::string input) { return JsonBool(input == "true"s); },
+    return fmap([](const std::string &input) { return JsonBool(input == "true"s); },
         (stringP("true") | []() { return stringP("false"); }));
 }
 
 Parser<JsonValue> jsonNumber() {
-    return fmap([](std::string input) { return JsonNumber(std::stoi(input)); },
+    return fmap([](const std::string &input) { return JsonNumber(std::stoi(input)); },
         notNull(spanP([](char c) { return std::isdigit(c); })));
 }
 
@@ -277,7 +279,7 @@ Parser<JsonValue> jsonArray() {
 Parser<JsonValue> jsonObject() {
     Parser<std::pair<std::string, JsonValue>> pair {[](std::string input) -> ParserRetT<std::pair<std::string, JsonValue>> {
         auto l = stringLiteral();
-        if (auto liter = l.runParser(input)) {
+        if (auto liter = l.runParser(std::move(input))) {
             auto [rest, literal] = liter.value();
             auto o = ws() > charP(':') > ws() > jsonValue();
             if (auto obj = o.runParser(rest)) {
@@ -298,14 +300,14 @@ Parser<JsonValue> jsonValue() {
 }
 
 int main() {
-    auto valueParser = jsonValue();
-    auto v0 = valueParser.runParser("null");
-    auto v1 = valueParser.runParser("true");
-    auto v2 = valueParser.runParser("false");
-    auto v3 = valueParser.runParser("1234");
-    auto v4 = valueParser.runParser(R"("hello")");
-    auto v5 = valueParser.runParser(R"(["hello", 1, 2, "hi", [1,2,3 ], []])");
-    auto v6 = valueParser.runParser(R"({"hello":"hi", "one": 1, "two": 2})");
+    [[maybe_unused]] auto valueParser = jsonValue();
+    [[maybe_unused]] auto v0 = valueParser.runParser("null");
+    [[maybe_unused]] auto v1 = valueParser.runParser("true");
+    [[maybe_unused]] auto v2 = valueParser.runParser("false");
+    [[maybe_unused]] auto v3 = valueParser.runParser("1234");
+    [[maybe_unused]] auto v4 = valueParser.runParser(R"("hello")");
+    [[maybe_unused]] auto v5 = valueParser.runParser(R"(["hello", 1, 2, "hi", [1,2,3 ], []])");
+    [[maybe_unused]] auto v6 = valueParser.runParser(R"({"hello":"hi", "one": 1, "two": 2})");
 
     printParsed(v0);
     printParsed(v1);

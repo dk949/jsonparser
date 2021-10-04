@@ -1,6 +1,9 @@
 #include "json_class.hpp"
 
-JsonValue::JsonValue(Data d): m_data(d) {}
+#include <cstddef>     // for size_t
+#include <type_traits>  // for decay_t
+
+JsonValue::JsonValue(Data d): m_data(std::move(d)) {}
 
 JsonValue JsonNull() {
     return JsonValue(JsonValue::Data(JsonValue::Null {}));
@@ -11,13 +14,13 @@ JsonValue JsonBool(JsonValue::Bool b) {
 JsonValue JsonNumber(JsonValue::Number n) {
     return JsonValue(JsonValue::Number {n});
 }
-JsonValue JsonString(JsonValue::String s) {
+JsonValue JsonString(const JsonValue::String &s) {
     return JsonValue(JsonValue::String {s});
 }
-JsonValue JsonArray(JsonValue::Array a) {
+JsonValue JsonArray(const JsonValue::Array &a) {
     return JsonValue(JsonValue::Array {a});
 }
-JsonValue JsonObject(JsonValue::Object o) {
+JsonValue JsonObject(const JsonValue::Object &o) {
     return JsonValue(JsonValue::Object {o});
 }
 
@@ -39,8 +42,6 @@ std::ostream &operator<<(std::ostream &o, const JsonValue &v) {
                 JsonValue::coutArray(o, arg);
             } else if constexpr (std::is_same_v<T, JsonValue::Object>) {
                 JsonValue::coutObject(o, arg);
-            } else {
-                static_assert(sizeof(T) < 0, "Too many types in variant");
             }
         },
         v.m_data);
@@ -56,10 +57,10 @@ void JsonValue::coutBool(std::ostream &o, Bool arg) {
 void JsonValue::coutNumber(std::ostream &o, Number arg) {
     o << "JsonNumber(" << arg << ')';
 }
-void JsonValue::coutString(std::ostream &o, String arg) {
+void JsonValue::coutString(std::ostream &o, const String &arg) {
     o << "JsonString(" << arg << ')';
 }
-void JsonValue::coutArray(std::ostream &o, Array arg) {
+void JsonValue::coutArray(std::ostream &o, const Array &arg) {
     static size_t arrayDepth = 0;
     arrayDepth++;
     o << "JsonArray([";
@@ -70,7 +71,7 @@ void JsonValue::coutArray(std::ostream &o, Array arg) {
     o << '\n' << std::string(arrayDepth, '\t') << "])";
     arrayDepth--;
 }
-void JsonValue::coutObject(std::ostream &o, Object arg) {
+void JsonValue::coutObject(std::ostream &o, const Object &arg) {
     static size_t objectDepth = 0;
     objectDepth++;
     o << "JsonObject({";
