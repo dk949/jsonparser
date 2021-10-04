@@ -11,15 +11,6 @@
 
 using std::operator""s;
 
-#define DEV(X) [[maybe_unused]] X
-
-template<typename A, typename B>
-struct Query {
-    static_assert(std::is_same_v<A, B>);
-};
-
-#define QUERY(A, B, C) [[maybe_unused]] Query<A, B> z##C
-
 void printParsed(auto v) {
     if (v.has_value()) {
         auto [rest, ret] = v.value();
@@ -28,6 +19,16 @@ void printParsed(auto v) {
         std::cout << "Nothing\n";
     }
 }
+
+template<typename Func>
+struct function_return {
+    using type = typename decltype(std::function {std::declval<Func>()})::result_type;
+};
+
+
+template<typename Func>
+using function_return_t = typename function_return<Func>::type;
+
 
 template<typename a>
 using ParserRetT = std::optional<std::pair<std::string, a>>;
@@ -40,7 +41,6 @@ using ParserT = ParserRetT<a>(ParserArgT);
 template<typename a>
 struct Parser {
     std::function<ParserT<a>> runParser;
-    using type = a;
 };
 
 template<typename T, typename a>
@@ -57,12 +57,11 @@ Parser<JsonValue> jsonString();
 Parser<JsonValue> jsonArray();
 
 
-auto fmap(auto f, auto p) {
-    using Ret = typename decltype(std::function {f})::result_type;
+template<typename Func, typename a, typename Ret = function_return_t<Func>>
+Parser<Ret> fmap(Func f, Parser<a> p) {
     return Parser<Ret> {[p, f](const ParserArgT &input) -> ParserRetT<Ret> {
         if (auto par = p.runParser(input)) {
             auto [nextInput, x] = par.value();
-            QUERY(Ret, decltype(f(x)), 1);
             return std::make_pair(nextInput, f(x));
         }
         return std::nullopt;
@@ -78,8 +77,8 @@ Parser<a> pure(a x) {
 }
 
 
-auto map(auto f, auto input) {
-    using Ret = typename decltype(std::function {f})::result_type;
+template<typename Func, typename Input, typename Ret = function_return_t<Func>>
+std::vector<Ret> map(Func f, Input input) {
     std::vector<Ret> out;
     std::transform(std::begin(input), std::end(input), std::back_inserter(out), f);
     return out;
@@ -115,14 +114,9 @@ Parser<a> notNull(Parser<a> p) {
     }};
 }
 
-auto id(auto a) {
-    return a;
-}
-
-
 
 template<typename t, typename Ret = std::conditional_t<std::is_same_v<t, char>, std::string, std::vector<t>>>
-Parser<Ret> sequenceA(std::vector<Parser<t>> a) {
+Parser<Ret> sequenceA(const std::vector<Parser<t>> &a) {
     return Parser<Ret> {[a](const ParserArgT &input) -> ParserRetT<Ret> {
         Ret out;
         auto copyInput = input;
@@ -140,7 +134,7 @@ Parser<Ret> sequenceA(std::vector<Parser<t>> a) {
 }
 
 template<typename a, ParserFactory<a> f>
-auto operator|(Parser<a> p1, f p2) {  // alternative
+Parser<a> operator|(Parser<a> p1, f p2) {  // alternative
     return Parser<a> {[p1, p2](const ParserArgT &input) -> ParserRetT<a> {
         if (auto par1 = p1.runParser(input)) {
             return par1;
@@ -153,7 +147,7 @@ auto operator|(Parser<a> p1, f p2) {  // alternative
 }
 
 template<typename a, typename b>
-auto operator>(Parser<a> p1, Parser<b> p2) {
+Parser<b> operator>(Parser<a> p1, Parser<b> p2) {
     return Parser<b> {[p1, p2](const ParserArgT &input) -> ParserRetT<b> {
         if (auto par1 = p1.runParser(input)) {
             auto rest = par1.value().first;
@@ -166,7 +160,7 @@ auto operator>(Parser<a> p1, Parser<b> p2) {
 }
 
 template<typename a, typename b>
-auto operator<(Parser<a> p1, Parser<b> p2) {
+Parser<a> operator<(Parser<a> p1, Parser<b> p2) {
     return Parser<a> {[p1, p2](const ParserArgT &input) -> ParserRetT<a> {
         if (auto par1 = p1.runParser(input)) {
             auto [rest, ret] = par1.value();
@@ -302,11 +296,6 @@ Parser<JsonValue> jsonObject() {
 Parser<JsonValue> jsonValue() {
     return jsonNull() | jsonBool | jsonNumber | jsonString | jsonArray | jsonObject;
 }
-
-
-std::optional<std::pair<std::string, int>> innerL(std::string) {
-    return std::optional<std::pair<std::string, int>> {std::make_pair("hello"s, 42)};
-};
 
 int main() {
     auto valueParser = jsonValue();
