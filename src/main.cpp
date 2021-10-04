@@ -1,11 +1,14 @@
 #include "json_class.hpp"  // for JsonValue, JsonValue::String, JsonValue::O...
 
-#include <algorithm>    // for transform
-#include <cctype>       // for isdigit, isspace
-#include <functional>   // for function
-#include <iostream>     // for operator<<, cout, ostream
-#include <iterator>     // for end, begin, back_inserter, pair
-#include <optional>     // for optional, nullopt
+#include <algorithm>   // for transform
+#include <cctype>      // for isdigit, isspace
+#include <filesystem>  // for vector
+#include <fstream>
+#include <functional>  // for function
+#include <iostream>    // for operator<<, cout, ostream
+#include <iterator>    // for end, begin, back_inserter, pair
+#include <optional>    // for optional, nullopt
+#include <sstream>
 #include <string>       // for basic_string, string, swap, allocator, ope...
 #include <type_traits>  // for conditional_t, declval
 #include <utility>      // for pair, make_pair, move
@@ -13,7 +16,7 @@
 
 using std::operator""s;
 
-void printParsed(auto v) {
+void printParsed(const auto &v) {
     if (v.has_value()) {
         auto [rest, ret] = v.value();
         std::cout << "Just(" << rest << ", " << ret << ")\n";
@@ -60,7 +63,7 @@ Parser<JsonValue> jsonArray();
 
 
 template<typename Func, typename a, typename Ret = function_return_t<Func>>
-Parser<Ret> fmap(Func f, Parser<a> p) {
+Parser<Ret> fmap(Func f, const Parser<a> &p) {
     return Parser<Ret> {[p, f](const ParserArgT &input) -> ParserRetT<Ret> {
         if (auto par = p.runParser(input)) {
             auto [nextInput, x] = par.value();
@@ -104,7 +107,7 @@ std::pair<Collection, Collection> span(auto f, Collection l) {
 }
 
 template<typename a>
-Parser<a> notNull(Parser<a> p) {
+Parser<a> notNull(const Parser<a> &p) {
     return Parser<a> {[p](const ParserArgT &input) -> ParserRetT<a> {
         if (auto par = p.runParser(input)) {
             auto [nextInput, x] = par.value();
@@ -136,7 +139,7 @@ Parser<Ret> sequenceA(const std::vector<Parser<t>> &a) {
 }
 
 template<typename a, ParserFactory<a> f>
-Parser<a> operator|(Parser<a> p1, f p2) {  // alternative
+Parser<a> operator|(const Parser<a> &p1, const f &p2) {  // alternative
     return Parser<a> {[p1, p2](const ParserArgT &input) -> ParserRetT<a> {
         if (auto par1 = p1.runParser(input)) {
             return par1;
@@ -149,7 +152,7 @@ Parser<a> operator|(Parser<a> p1, f p2) {  // alternative
 }
 
 template<typename a, typename b>
-Parser<b> operator>(Parser<a> p1, Parser<b> p2) {
+Parser<b> operator>(const Parser<a> &p1, const Parser<b> &p2) {
     return Parser<b> {[p1, p2](const ParserArgT &input) -> ParserRetT<b> {
         if (auto par1 = p1.runParser(input)) {
             auto rest = par1.value().first;
@@ -162,7 +165,7 @@ Parser<b> operator>(Parser<a> p1, Parser<b> p2) {
 }
 
 template<typename a, typename b>
-Parser<a> operator<(Parser<a> p1, Parser<b> p2) {
+Parser<a> operator<(const Parser<a> &p1, const Parser<b> &p2) {
     return Parser<a> {[p1, p2](const ParserArgT &input) -> ParserRetT<a> {
         if (auto par1 = p1.runParser(input)) {
             auto [rest, ret] = par1.value();
@@ -202,7 +205,7 @@ Parser<ParserArgT> spanP(auto f) {
 }
 
 template<typename a>
-Parser<std::vector<a>> many(Parser<a> p) {
+Parser<std::vector<a>> many(const Parser<a> &p) {
     return Parser<std::vector<a>> {[p](const ParserArgT &input) {
         std::vector<a> out;
         auto copyInput = input;
@@ -229,7 +232,7 @@ Parser<ParserArgT> ws() {
 }
 
 template<typename a, typename b, typename Ret = std::conditional_t<std::is_same_v<b, char>, std::string, std::vector<b>>>
-Parser<Ret> sepBy(Parser<a> sep, Parser<b> element) {
+Parser<Ret> sepBy(const Parser<a> &sep, const Parser<b> &element) {
     auto l = [sep, element](std::string input) -> ParserRetT<Ret> {
         Ret out;
         if (auto elem = element.runParser(input)) {
@@ -301,19 +304,24 @@ Parser<JsonValue> jsonValue() {
 
 int main() {
     [[maybe_unused]] auto valueParser = jsonValue();
-    [[maybe_unused]] auto v0 = valueParser.runParser("null");
-    [[maybe_unused]] auto v1 = valueParser.runParser("true");
-    [[maybe_unused]] auto v2 = valueParser.runParser("false");
-    [[maybe_unused]] auto v3 = valueParser.runParser("1234");
-    [[maybe_unused]] auto v4 = valueParser.runParser(R"("hello")");
-    [[maybe_unused]] auto v5 = valueParser.runParser(R"(["hello", 1, 2, "hi", [1,2,3 ], []])");
-    [[maybe_unused]] auto v6 = valueParser.runParser(R"({"hello":"hi", "one": 1, "two": 2})");
-
-    printParsed(v0);
-    printParsed(v1);
-    printParsed(v2);
-    printParsed(v3);
-    printParsed(v4);
-    printParsed(v5);
-    printParsed(v6);
+    std::cout << std::filesystem::current_path();
+    std::array files {
+        std::ifstream("tests/example1.json"),
+        std::ifstream("tests/example2.json"),
+        std::ifstream("tests/example3.json"),
+        std::ifstream("tests/example4.json"),
+        std::ifstream("tests/example5.json"),
+    };
+    std::stringstream contents;
+    for (const auto &file : files) {
+        contents << file.rdbuf();
+        auto tmp = contents.str();
+        auto start = std::chrono::high_resolution_clock::now();
+        auto v = valueParser.runParser(tmp);
+        auto end = std::chrono::high_resolution_clock::now();
+        std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() << "us\n";
+        if (!v) {
+            std::cout << "oh no!\n";
+        }
+    }
 }
