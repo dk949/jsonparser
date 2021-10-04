@@ -1,18 +1,18 @@
-#include "json_class.hpp"  // for JsonValue, JsonValue::String, JsonValue::O...
+#include "json_class.hpp"
 
-#include <algorithm>   // for transform
-#include <cctype>      // for isdigit, isspace
-#include <filesystem>  // for vector
+#include <algorithm>
+#include <cctype>
+#include <filesystem>
 #include <fstream>
-#include <functional>  // for function
-#include <iostream>    // for operator<<, cout, ostream
-#include <iterator>    // for end, begin, back_inserter, pair
-#include <optional>    // for optional, nullopt
+#include <functional>
+#include <iostream>
+#include <iterator>
+#include <optional>
 #include <sstream>
-#include <string>       // for basic_string, string, swap, allocator, ope...
-#include <type_traits>  // for conditional_t, declval
-#include <utility>      // for pair, make_pair, move
-#include <vector>       // for vector
+#include <string>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 using std::operator""s;
 
@@ -306,11 +306,12 @@ int main() {
     [[maybe_unused]] auto valueParser = jsonValue();
     std::cout << std::filesystem::current_path();
     std::array files {
-        std::ifstream("tests/example1.json"),
-        std::ifstream("tests/example2.json"),
-        std::ifstream("tests/example3.json"),
-        std::ifstream("tests/example4.json"),
-        std::ifstream("tests/example5.json"),
+        std::ifstream("tests/example1.json"),  // https://json.org/example.html
+        std::ifstream("tests/example2.json"),  // https://json.org/example.html
+        std::ifstream("tests/example3.json"),  // https://json.org/example.html
+        std::ifstream("tests/example4.json"),  // https://json.org/example.html
+        std::ifstream("tests/example5.json"),  // https://json.org/example.html
+        std::ifstream("tests/example6.json"),  // https://raw.githubusercontent.com/json-iterator/test-data/master/large-file.json
     };
     std::stringstream contents;
     for (const auto &file : files) {
