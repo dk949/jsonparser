@@ -304,7 +304,6 @@ Parser<JsonValue> jsonValue() {
 
 int main() {
     [[maybe_unused]] auto valueParser = jsonValue();
-    std::cout << std::filesystem::current_path();
     std::array files {
         std::ifstream("tests/example1.json"),  // https://json.org/example.html
         std::ifstream("tests/example2.json"),  // https://json.org/example.html
