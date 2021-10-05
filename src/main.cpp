@@ -8,49 +8,39 @@
 #include <iostream>
 #include <iterator>
 #include <optional>
+#include <source_location>
 #include <sstream>
 #include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
+
 using std::operator""s;
 
-void printParsed(const auto &v) {
-    if (v.has_value()) {
-        auto [rest, ret] = v.value();
-        std::cout << "Just(" << rest << ", " << ret << ")\n";
-    } else {
-        std::cout << "Nothing\n";
-    }
-}
+template<typename F>
+using FunctionReturnT = typename decltype(std::function {std::declval<F>()})::result_type;
 
-template<typename Func>
-struct function_return {
-    using type = typename decltype(std::function {std::declval<Func>()})::result_type;
-};
+template<typename T>
+using CollectionOf = std::conditional_t<std::is_same_v<T, char>, std::string, std::vector<T>>;
 
 
-template<typename Func>
-using function_return_t = typename function_return<Func>::type;
-
-
-template<typename a>
-using ParserRetT = std::optional<std::pair<std::string, a>>;
+template<typename T>
+using ParserRetT = std::optional<std::pair<std::string, T>>;
 
 using ParserArgT = std::string;
 
-template<typename a>
-using ParserT = ParserRetT<a>(ParserArgT);
+template<typename T>
+using ParserT = ParserRetT<T>(ParserArgT);
 
-template<typename a>
+template<typename T>
 struct Parser {
-    std::function<ParserT<a>> runParser;
+    std::function<ParserT<T>> runParser;
 };
 
-template<typename T, typename a>
+template<typename T, typename U>
 concept ParserFactory = requires(T t) {
-    { t() } -> std::same_as<Parser<a>>;
+    { t() } -> std::same_as<Parser<U>>;
 };
 
 
@@ -61,12 +51,11 @@ Parser<JsonValue> jsonNumber();
 Parser<JsonValue> jsonString();
 Parser<JsonValue> jsonArray();
 
-
-template<typename Func, typename a, typename Ret = function_return_t<Func>>
-Parser<Ret> fmap(Func f, const Parser<a> &p) {
+template<typename F, typename T, typename Ret = FunctionReturnT<F>>
+Parser<Ret> fmap(F f, const Parser<T> &p) {
     return Parser<Ret> {[p, f](const ParserArgT &input) -> ParserRetT<Ret> {
-        if (auto par = p.runParser(input)) {
-            auto [nextInput, x] = par.value();
+        if (const auto par = p.runParser(input)) {
+            const auto [nextInput, x] = par.value();
             return std::make_pair(nextInput, f(x));
         }
         return std::nullopt;
@@ -74,23 +63,23 @@ Parser<Ret> fmap(Func f, const Parser<a> &p) {
 }
 
 
-template<typename a>
-Parser<a> pure(a x) {
-    return Parser<a> {[x](const ParserArgT &input) -> ParserRetT<a> {  //
+template<typename T>
+Parser<T> pure(T x) {
+    return Parser<T> {[x](const ParserArgT &input) -> ParserRetT<T> {  //
         return std::make_pair(input, x);
     }};
 }
 
 
-template<typename Func, typename Input, typename Ret = function_return_t<Func>>
-std::vector<Ret> map(Func f, Input input) {
+template<typename F, typename T, typename Ret = FunctionReturnT<F>>
+std::vector<Ret> map(F f, T input) {
     std::vector<Ret> out;
     std::transform(std::begin(input), std::end(input), std::back_inserter(out), f);
     return out;
 }
 
 template<typename Collection>
-std::pair<Collection, Collection> span(auto f, Collection l) {
+std::pair<Collection, Collection> span(const auto &f, const Collection &l) {
     std::pair<Collection, Collection> out;
     auto it = std::begin(l);
 
@@ -106,11 +95,11 @@ std::pair<Collection, Collection> span(auto f, Collection l) {
     return out;
 }
 
-template<typename a>
-Parser<a> notNull(const Parser<a> &p) {
-    return Parser<a> {[p](const ParserArgT &input) -> ParserRetT<a> {
-        if (auto par = p.runParser(input)) {
-            auto [nextInput, x] = par.value();
+template<typename T>
+Parser<T> notNull(const Parser<T> &p) {
+    return Parser<T> {[p](const ParserArgT &input) -> ParserRetT<T> {
+        if (const auto par = p.runParser(input)) {
+            const auto [nextInput, x] = par.value();
             if (x != "") {
                 return par.value();
             }
@@ -120,43 +109,42 @@ Parser<a> notNull(const Parser<a> &p) {
 }
 
 
-template<typename t, typename Ret = std::conditional_t<std::is_same_v<t, char>, std::string, std::vector<t>>>
-Parser<Ret> sequenceA(const std::vector<Parser<t>> &a) {
-    return Parser<Ret> {[a](const ParserArgT &input) -> ParserRetT<Ret> {
+template<typename T, typename Ret = CollectionOf<T>>
+Parser<Ret> sequenceA(const std::vector<Parser<T>> &a) {
+    return Parser<Ret> {[a](ParserArgT input) -> ParserRetT<Ret> {
         Ret out;
-        auto copyInput = input;
         for (const auto &p : a) {
-            if (auto success = p.runParser(copyInput)) {
-                auto [rest, res] = success.value();
-                out.push_back(res);
-                copyInput = rest;
+            if (const auto success = p.runParser(input)) {
+                const auto [rest, ret] = success.value();
+                out.push_back(ret);
+                input = rest;
             } else {
                 return std::nullopt;
             }
         }
-        return std::make_pair(copyInput, out);
+        return std::make_pair(input, out);
     }};
 }
 
-template<typename a, ParserFactory<a> f>
-Parser<a> operator|(const Parser<a> &p1, const f &p2) {  // alternative
-    return Parser<a> {[p1, p2](const ParserArgT &input) -> ParserRetT<a> {
-        if (auto par1 = p1.runParser(input)) {
+template<typename T, ParserFactory<T> F>
+Parser<T> operator|(const Parser<T> &p1, const F &p2) {  // alternative
+    return Parser<T> {[p1, p2](const ParserArgT &input) -> ParserRetT<T> {
+        if (const auto par1 = p1.runParser(input)) {
             return par1;
         }
-        if (auto par2 = p2().runParser(input)) {
+        if (const auto par2 = p2().runParser(input)) {
             return par2;
         }
         return std::nullopt;
     }};
 }
 
-template<typename a, typename b>
-Parser<b> operator>(const Parser<a> &p1, const Parser<b> &p2) {
-    return Parser<b> {[p1, p2](const ParserArgT &input) -> ParserRetT<b> {
-        if (auto par1 = p1.runParser(input)) {
-            auto rest = par1.value().first;
-            if (auto par2 = p2.runParser(rest)) {
+template<typename T, typename U>
+Parser<U> operator>(const Parser<T> &p1, const Parser<U> &p2) {
+    return Parser<U> {[p1, p2](const ParserArgT &input) -> ParserRetT<U> {
+        if (const auto par1 = p1.runParser(input)) {
+            const auto rest = par1.value().first;
+            if (const auto par2 = p2.runParser(rest)) {
                 return par2;
             }
         }
@@ -164,12 +152,12 @@ Parser<b> operator>(const Parser<a> &p1, const Parser<b> &p2) {
     }};
 }
 
-template<typename a, typename b>
-Parser<a> operator<(const Parser<a> &p1, const Parser<b> &p2) {
-    return Parser<a> {[p1, p2](const ParserArgT &input) -> ParserRetT<a> {
-        if (auto par1 = p1.runParser(input)) {
-            auto [rest, ret] = par1.value();
-            if (auto par2 = p2.runParser(rest)) {
+template<typename T, typename U>
+Parser<T> operator<(const Parser<T> &p1, const Parser<U> &p2) {
+    return Parser<T> {[p1, p2](const ParserArgT &input) -> ParserRetT<T> {
+        if (const auto par1 = p1.runParser(input)) {
+            const auto [rest, ret] = par1.value();
+            if (const auto par2 = p2.runParser(rest)) {
                 return std::make_pair(par2.value().first, ret);
             }
         }
@@ -195,30 +183,29 @@ Parser<ParserArgT> stringP(const ParserArgT &x) {
 }
 
 
-Parser<ParserArgT> spanP(auto f) {
+template<typename F>
+Parser<ParserArgT> spanP(const F &f) {
     return Parser<ParserArgT> {[f](const ParserArgT &input) -> ParserRetT<ParserArgT> {
         auto ret = span(f, input);
-
         std::swap(ret.first, ret.second);
         return ret;
     }};
 }
 
-template<typename a>
-Parser<std::vector<a>> many(const Parser<a> &p) {
-    return Parser<std::vector<a>> {[p](const ParserArgT &input) {
-        std::vector<a> out;
-        auto copyInput = input;
-        while (!copyInput.empty()) {
-            if (auto par = p.runParser(copyInput)) {
-                auto [rest, ret] = par.value();
+template<typename T>
+Parser<std::vector<T>> many(const Parser<T> &p) {
+    return Parser<std::vector<T>> {[p](ParserArgT input) {
+        std::vector<T> out;
+        while (!input.empty()) {
+            if (const auto par = p.runParser(input)) {
+                const auto [rest, ret] = par.value();
                 out.push_back(ret);
-                copyInput = rest;
+                input = rest;
                 continue;
             }
-            return std::make_pair(copyInput, out);
+            return std::make_pair(input, out);
         }
-        return std::make_pair(copyInput, out);
+        return std::make_pair(input, out);
     }};
 }
 
@@ -231,15 +218,15 @@ Parser<ParserArgT> ws() {
     return spanP([](char c) { return std::isspace(c); });
 }
 
-template<typename a, typename b, typename Ret = std::conditional_t<std::is_same_v<b, char>, std::string, std::vector<b>>>
-Parser<Ret> sepBy(const Parser<a> &sep, const Parser<b> &element) {
-    auto l = [sep, element](std::string input) -> ParserRetT<Ret> {
+template<typename T, typename U, typename Ret = CollectionOf<U>>
+Parser<Ret> sepBy(const Parser<T> &sep, const Parser<U> &element) {
+    const auto l = [sep, element](std::string input) -> ParserRetT<Ret> {
         Ret out;
-        if (auto elem = element.runParser(input)) {
-            auto [rest, ret] = elem.value();
-            auto m = many(sep > element);
-            if (auto manyRes = m.runParser(rest)) {
-                auto [rest1, ret1] = manyRes.value();
+        if (const auto elem = element.runParser(input)) {
+            const auto [rest, ret] = elem.value();
+            const auto m = many(sep > element);
+            if (const auto manyRes = m.runParser(rest)) {
+                const auto [rest1, ret1] = manyRes.value();
                 out.push_back(ret);
                 out.insert(std::end(out), std::begin(ret1), std::end(ret1));
                 return std::make_pair(rest1, out);
@@ -272,8 +259,8 @@ Parser<JsonValue> jsonString() {
 }
 
 Parser<JsonValue> jsonArray() {
-    auto elements = []() -> Parser<std::vector<JsonValue>> {
-        auto sep = ws() > charP(',') < ws();
+    const auto elements = []() -> Parser<std::vector<JsonValue>> {
+        const auto sep = ws() > charP(',') < ws();
         return sepBy(sep, jsonValue());
     };
     return fmap(JsonArray, charP('[') > ws() > elements() < ws() < charP(']'));
@@ -281,12 +268,12 @@ Parser<JsonValue> jsonArray() {
 
 Parser<JsonValue> jsonObject() {
     Parser<std::pair<std::string, JsonValue>> pair {[](std::string input) -> ParserRetT<std::pair<std::string, JsonValue>> {
-        auto l = stringLiteral();
-        if (auto liter = l.runParser(std::move(input))) {
-            auto [rest, literal] = liter.value();
-            auto o = ws() > charP(':') > ws() > jsonValue();
-            if (auto obj = o.runParser(rest)) {
-                auto [rest1, object] = obj.value();
+        const auto l = stringLiteral();
+        if (const auto liter = l.runParser(std::move(input))) {
+            const auto [rest, literal] = liter.value();
+            const auto o = ws() > charP(':') > ws() > jsonValue();
+            if (const auto obj = o.runParser(rest)) {
+                const auto [rest1, object] = obj.value();
                 return std::make_pair(rest1, std::make_pair(literal, object));
             }
         }
@@ -297,31 +284,41 @@ Parser<JsonValue> jsonObject() {
 }
 
 
-
 Parser<JsonValue> jsonValue() {
     return jsonNull() | jsonBool | jsonNumber | jsonString | jsonArray | jsonObject;
 }
 
+
 int main() {
-    [[maybe_unused]] auto valueParser = jsonValue();
+    const auto valueParser = jsonValue();
+    [[maybe_unused]] const auto printParsed = [](const auto &v) {
+        if (v.has_value()) {
+            const auto [rest, ret] = v.value();
+            std::cout << "Just(" << rest << ", " << ret << ")\n";
+        } else {
+            std::cout << "Nothing\n";
+        }
+    };
     std::array files {
         std::ifstream("tests/example1.json"),  // https://json.org/example.html
-        std::ifstream("tests/example2.json"),  // https://json.org/example.html
-        std::ifstream("tests/example3.json"),  // https://json.org/example.html
-        std::ifstream("tests/example4.json"),  // https://json.org/example.html
-        std::ifstream("tests/example5.json"),  // https://json.org/example.html
-        std::ifstream("tests/example6.json"),  // https://raw.githubusercontent.com/json-iterator/test-data/master/large-file.json
+        // std::ifstream("tests/example2.json"),  // https://json.org/example.html
+        // std::ifstream("tests/example3.json"),  // https://json.org/example.html
+        // std::ifstream("tests/example4.json"),  // https://json.org/example.html
+        // std::ifstream("tests/example5.json"),  // https://json.org/example.html
+        // std::ifstream("tests/example6.json"),  // https://raw.githubusercontent.com/json-iterator/test-data/master/large-file.json
     };
+
     std::stringstream contents;
     for (const auto &file : files) {
         contents << file.rdbuf();
-        auto tmp = contents.str();
-        auto start = std::chrono::high_resolution_clock::now();
-        auto v = valueParser.runParser(tmp);
-        auto end = std::chrono::high_resolution_clock::now();
+        const auto tmp = contents.str();
+        const auto start = std::chrono::high_resolution_clock::now();
+        const auto v = valueParser.runParser(tmp);
+        const auto end = std::chrono::high_resolution_clock::now();
         std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() << "us\n";
         if (!v) {
-            std::cout << "oh no!\n";
+            std::cout << "oh no\n";
+            return -1;
         }
     }
 }
