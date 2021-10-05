@@ -1,14 +1,5 @@
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-configure_file(
-    "${PROJECT_SOURCE_DIR}/cmake/ModCompileCommands.cmake.in" "${CMAKE_BINARY_DIR}/ModCompileCommands.cmake" @ONLY
-)
-if (CMAKE_EXPORT_COMPILE_COMMANDS AND NOT MSVC)
-    add_custom_target(
-        fix_compile_commands ALL COMMAND ${CMAKE_COMMAND} -P "${CMAKE_BINARY_DIR}/ModCompileCommands.cmake"
-    )
-endif ()
-
 macro (link_compile_commands)
     set(current_list_path ${CMAKE_CURRENT_LIST_DIR})
 
