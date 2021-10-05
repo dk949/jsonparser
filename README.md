@@ -3,10 +3,8 @@
 Reimplementing [this](https://youtu.be/N9RUqGYuGfw) json parser in C++ (originally in haskell).
 
 ## Requirements
-* python3
-* conan
-* c++20 compiler (tested on g++11)
 * cmake
+* c++20 compiler (tested on g++11)
 
 
 ## To build and run
@@ -14,7 +12,7 @@ Reimplementing [this](https://youtu.be/N9RUqGYuGfw) json parser in C++ (original
 ```sh
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-./build/bin/json
+./build/src/json
 ```
 * On windows:
 ```sh
